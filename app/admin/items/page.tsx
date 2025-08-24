@@ -1,248 +1,376 @@
-﻿"use client";
+"use client"
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react"
+import { motion } from "framer-motion"
+import { Plus, Edit, Trash2, Package, Wrench, Layers, Search } from "lucide-react"
 
-type Item = {
-  id: string;
-  name: string;
-  kind: "product" | "service" | "bundle";
-  unit: string | null;
-  cost_price: number | null;
-  sale_price: number | null;
-  created_at: string;
-};
+import { AppLayout } from "@/components/app-layout"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
-export default function ItemsPage() {
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(false);
+const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.4 },
+}
 
-  // Nytt item
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<"product" | "service">("product");
-  const [unit, setUnit] = useState("");
-  const [cost, setCost] = useState<string>("");
-  const [price, setPrice] = useState<string>("");
+// Dummy articles data
+const articles = [
+  {
+    id: 1,
+    name: "VVS Installation",
+    type: "tjänst",
+    unit: "tim",
+    purchasePrice: 600,
+    salePrice: 850,
+  },
+  {
+    id: 2,
+    name: "Rör och kopplingar",
+    type: "produkt",
+    unit: "st",
+    purchasePrice: 80,
+    salePrice: 120,
+  },
+  {
+    id: 3,
+    name: "Badrumspaket Standard",
+    type: "bundle",
+    unit: "st",
+    purchasePrice: 18000,
+    salePrice: 25000,
+  },
+  {
+    id: 4,
+    name: "Elinstallation",
+    type: "tjänst",
+    unit: "tim",
+    purchasePrice: 500,
+    salePrice: 750,
+  },
+  {
+    id: 5,
+    name: "Kakel och klinker",
+    type: "produkt",
+    unit: "m2",
+    purchasePrice: 200,
+    salePrice: 350,
+  },
+]
 
-  // Redigera item (enkel inline)
-  const [editId, setEditId] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ name: "", unit: "", cost_price: "", sale_price: "" });
+export default function AdminItemsPage() {
+  const [activeTab, setActiveTab] = useState("alla")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [newArticle, setNewArticle] = useState({
+    name: "",
+    type: "produkt",
+    unit: "st",
+    purchasePrice: "",
+    salePrice: "",
+  })
 
-  // Paket
-  const [bundleName, setBundleName] = useState("");
-  const [selected, setSelected] = useState<Record<string, number>>({}); // id -> qty
+  const filteredArticles = articles.filter((article) => {
+    const matchesSearch = article.name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesTab = activeTab === "alla" || article.type === activeTab
 
-  const load = async () => {
-    setLoading(true);
-    const r = await fetch("/api/items");
-    const data = await r.json();
-    setItems(data.items ?? []);
-    setLoading(false);
-  };
+    return matchesSearch && matchesTab
+  })
 
-  useEffect(() => { load(); }, []);
-
-  const nonBundles = useMemo(() => items.filter(i => i.kind !== "bundle"), [items]);
-
-  async function createItem(e: React.FormEvent) {
-    e.preventDefault();
-    const body = {
-      name: name.trim(),
-      kind,
-      unit: unit || null,
-      cost_price: cost === "" ? null : Number(cost),
-      sale_price: price === "" ? null : Number(price),
-    };
-    const r = await fetch("/api/items", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const res = await r.json();
-    if (r.ok) {
-      setName(""); setUnit(""); setCost(""); setPrice(""); setKind("product");
-      await load();
-    } else { alert(res.error || "Kunde inte skapa item"); }
-  }
-
-  async function createBundle(e: React.FormEvent) {
-    e.preventDefault();
-    const components = Object.entries(selected)
-      .filter(([, qty]) => qty && Number(qty) > 0)
-      .map(([id, qty]) => ({ item_id: id, quantity: Number(qty) }));
-
-    if (!bundleName.trim() || components.length === 0) {
-      alert("Ange namn och välj minst en komponent med kvantitet.");
-      return;
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case "produkt":
+        return <Package className="h-4 w-4" />
+      case "tjänst":
+        return <Wrench className="h-4 w-4" />
+      case "bundle":
+        return <Layers className="h-4 w-4" />
+      default:
+        return <Package className="h-4 w-4" />
     }
-
-    const r = await fetch("/api/bundles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: bundleName.trim(), components }),
-    });
-    const res = await r.json();
-    if (r.ok) {
-      setBundleName(""); setSelected({});
-      await load();
-    } else { alert(res.error || "Kunde inte skapa paket"); }
   }
 
-  function startEdit(it: Item) {
-    setEditId(it.id);
-    setEdit({
-      name: it.name,
-      unit: it.unit ?? "",
-      cost_price: it.cost_price == null ? "" : String(it.cost_price),
-      sale_price: it.sale_price == null ? "" : String(it.sale_price),
-    });
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case "produkt":
+        return "default"
+      case "tjänst":
+        return "secondary"
+      case "bundle":
+        return "outline"
+      default:
+        return "default"
+    }
   }
 
-  async function saveEdit(id: string) {
-    const r = await fetch(`/api/items/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: edit.name.trim(),
-        unit: edit.unit || null,
-        cost_price: edit.cost_price === "" ? null : Number(edit.cost_price),
-        sale_price: edit.sale_price === "" ? null : Number(edit.sale_price),
-      }),
-    });
-    const res = await r.json();
-    if (!r.ok) { alert(res.error || "Kunde inte uppdatera"); return; }
-    setEditId(null);
-    await load();
-  }
-
-  async function remove(id: string) {
-    if (!confirm("Ta bort? Detta går inte att ångra.")) return;
-    const r = await fetch(`/api/items/${id}`, { method: "DELETE" });
-    const res = await r.json().catch(()=>({}));
-    if (!r.ok) { alert((res as any)?.error || "Kunde inte ta bort"); return; }
-    await load();
+  const handleAddArticle = () => {
+    // In a real app, this would save to database
+    console.log("Adding article:", newArticle)
+    setIsDialogOpen(false)
+    setNewArticle({
+      name: "",
+      type: "produkt",
+      unit: "st",
+      purchasePrice: "",
+      salePrice: "",
+    })
   }
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-2xl font-semibold">Produkter & tjänster</h1>
-
-      {/* Skapa nytt item */}
-      <section className="rounded-xl border p-4 space-y-3">
-        <h2 className="font-medium">Lägg till item (produkt eller tjänst)</h2>
-        <form onSubmit={createItem} className="grid gap-3 sm:grid-cols-2">
-          <input className="rounded border px-3 py-2" placeholder="Namn" value={name} onChange={e=>setName(e.target.value)} required />
-          <select className="rounded border px-3 py-2" value={kind} onChange={e=>setKind(e.target.value as any)}>
-            <option value="product">Produkt</option>
-            <option value="service">Tjänst</option>
-          </select>
-          <input className="rounded border px-3 py-2" placeholder="Enhet (t.ex. st, h, m²)" value={unit} onChange={e=>setUnit(e.target.value)} />
-          <input className="rounded border px-3 py-2" placeholder="Inköpspris (kr)" value={cost} onChange={e=>setCost(e.target.value)} type="number" step="0.01" />
-          <input className="rounded border px-3 py-2" placeholder="Pris till kund (kr)" value={price} onChange={e=>setPrice(e.target.value)} type="number" step="0.01" />
-          <button className="rounded-lg border px-3 py-2 hover:bg-black/5 dark:hover:bg-white/10">Spara item</button>
-        </form>
-      </section>
-
-      {/* Skapa paket */}
-      <section className="rounded-xl border p-4 space-y-3">
-        <h2 className="font-medium">Lägg till paket (bundle)</h2>
-        <form onSubmit={createBundle} className="space-y-3">
-          <input className="rounded border px-3 py-2 w-full" placeholder="Paketnamn (t.ex. Attefallstuga)" value={bundleName} onChange={e=>setBundleName(e.target.value)} required />
-          <div className="border rounded-lg divide-y">
-            {nonBundles.length === 0 ? (
-              <div className="p-3 text-sm text-neutral-600">Lägg först till några produkter/tjänster ovan.</div>
-            ) : nonBundles.map(it => (
-              <div key={it.id} className="p-3 flex items-center gap-3">
-                <div className="flex-1">
-                  <div className="font-medium">{it.name}</div>
-                  <div className="text-xs text-neutral-600">{it.kind}{it.unit ? ` • ${it.unit}` : ""} {it.sale_price ? `• ${it.sale_price} kr` : ""}</div>
+    <AppLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <motion.div
+          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+          initial="initial"
+          animate="animate"
+          variants={fadeInUp}
+        >
+          <div>
+            <h1 className="font-playfair text-3xl font-bold">Artiklar</h1>
+            <p className="text-muted-foreground mt-2">Hantera produkter, tjänster och bundles</p>
+          </div>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="spotlight-gradient">
+                <Plus className="h-4 w-4 mr-2" />
+                Ny artikel
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Lägg till ny artikel</DialogTitle>
+                <DialogDescription>Skapa en ny produkt, tjänst eller bundle</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="name">Namn</Label>
+                  <Input
+                    id="name"
+                    value={newArticle.name}
+                    onChange={(e) => setNewArticle({ ...newArticle, name: e.target.value })}
+                    placeholder="Artikelnamn"
+                  />
                 </div>
-                <input
-                  className="w-24 rounded border px-2 py-1"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Antal"
-                  value={selected[it.id] ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setSelected((s) => ({ ...s, [it.id]: v === "" ? (undefined as any) : Number(v) }));
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-          <button className="rounded-lg border px-3 py-2 hover:bg-black/5 dark:hover:bg-white/10">Spara paket</button>
-        </form>
-      </section>
-
-      {/* Lista och redigera/ta bort */}
-      <section className="rounded-xl border p-4 space-y-3">
-        <h2 className="font-medium">Items</h2>
-        {loading ? <div>Laddar…</div> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left border-b">
-                  <th className="py-2 pr-2">Namn</th>
-                  <th className="py-2 pr-2">Typ</th>
-                  <th className="py-2 pr-2">Enhet</th>
-                  <th className="py-2 pr-2">Inköp</th>
-                  <th className="py-2 pr-2">Pris</th>
-                  <th className="py-2">Åtgärder</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(it => (
-                  <tr key={it.id} className="border-b">
-                    <td className="py-2 pr-2">
-                      {editId === it.id ? (
-                        <input className="rounded border px-2 py-1 w-full" value={edit.name} onChange={e=>setEdit(s=>({...s, name:e.target.value}))} />
-                      ) : it.name}
-                    </td>
-                    <td className="py-2 pr-2">{it.kind}</td>
-                    <td className="py-2 pr-2">
-                      {editId === it.id ? (
-                        <input className="rounded border px-2 py-1 w-24" value={edit.unit} onChange={e=>setEdit(s=>({...s, unit:e.target.value}))} />
-                      ) : (it.unit ?? "—")}
-                    </td>
-                    <td className="py-2 pr-2">
-                      {editId === it.id ? (
-                        <input className="rounded border px-2 py-1 w-24" type="number" step="0.01" value={edit.cost_price} onChange={e=>setEdit(s=>({...s, cost_price:e.target.value}))} />
-                      ) : (it.cost_price ?? "—")}
-                    </td>
-                    <td className="py-2 pr-2">
-                      {editId === it.id ? (
-                        <input className="rounded border px-2 py-1 w-24" type="number" step="0.01" value={edit.sale_price} onChange={e=>setEdit(s=>({...s, sale_price:e.target.value}))} />
-                      ) : (it.sale_price ?? "—")}
-                    </td>
-                    <td className="py-2">
-                      {it.kind === "bundle" ? (
-                        <div className="flex gap-2">
-                          <button className="rounded border px-2 py-1 opacity-50 cursor-not-allowed" title="Redigering av paket kommer senare">Redigera</button>
-                          <button className="rounded border px-2 py-1 hover:bg-black/5" onClick={()=>remove(it.id)}>Ta bort</button>
-                        </div>
-                      ) : editId === it.id ? (
-                        <div className="flex gap-2">
-                          <button className="rounded border px-2 py-1 hover:bg-black/5" onClick={()=>saveEdit(it.id)}>Spara</button>
-                          <button className="rounded border px-2 py-1 hover:bg-black/5" onClick={()=>setEditId(null)}>Avbryt</button>
-                        </div>
-                      ) : (
-                        <div className="flex gap-2">
-                          <button className="rounded border px-2 py-1 hover:bg-black/5" onClick={()=>startEdit(it)}>Redigera</button>
-                          <button className="rounded border px-2 py-1 hover:bg-black/5" onClick={()=>remove(it.id)}>Ta bort</button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {items.length === 0 && (
-                  <tr><td className="py-3 text-neutral-600" colSpan={6}>Inga items ännu.</td></tr>
+                <div>
+                  <Label htmlFor="type">Typ</Label>
+                  <Select
+                    value={newArticle.type}
+                    onValueChange={(value) => setNewArticle({ ...newArticle, type: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="produkt">Produkt</SelectItem>
+                      <SelectItem value="tjänst">Tjänst</SelectItem>
+                      <SelectItem value="bundle">Bundle</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="unit">Enhet</Label>
+                  <Select
+                    value={newArticle.unit}
+                    onValueChange={(value) => setNewArticle({ ...newArticle, unit: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="st">st</SelectItem>
+                      <SelectItem value="tim">tim</SelectItem>
+                      <SelectItem value="m">m</SelectItem>
+                      <SelectItem value="m2">m²</SelectItem>
+                      <SelectItem value="kg">kg</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="purchasePrice">Inköpspris</Label>
+                    <Input
+                      id="purchasePrice"
+                      type="number"
+                      value={newArticle.purchasePrice}
+                      onChange={(e) => setNewArticle({ ...newArticle, purchasePrice: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="salePrice">Försäljningspris</Label>
+                    <Input
+                      id="salePrice"
+                      type="number"
+                      value={newArticle.salePrice}
+                      onChange={(e) => setNewArticle({ ...newArticle, salePrice: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                {newArticle.type === "bundle" && (
+                  <div>
+                    <Label>Komponenter</Label>
+                    <div className="mt-2 p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        Bundle-komponenter konfigureras efter att artikeln skapats
+                      </p>
+                    </div>
+                  </div>
                 )}
-              </tbody>
-            </table>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                    Avbryt
+                  </Button>
+                  <Button onClick={handleAddArticle}>Lägg till</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </motion.div>
+
+        {/* Search */}
+        <motion.div initial="initial" animate="animate" variants={fadeInUp}>
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Sök artiklar..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 bg-muted/50"
+            />
           </div>
-        )}
-      </section>
-    </div>
-  );
+        </motion.div>
+
+        {/* Tabs */}
+        <motion.div initial="initial" animate="animate" variants={fadeInUp}>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-4 max-w-md">
+              <TabsTrigger value="alla">Alla</TabsTrigger>
+              <TabsTrigger value="produkt">Produkter</TabsTrigger>
+              <TabsTrigger value="tjänst">Tjänster</TabsTrigger>
+              <TabsTrigger value="bundle">Bundles</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value={activeTab} className="mt-6">
+              {filteredArticles.length > 0 ? (
+                <Card className="glass">
+                  <CardHeader>
+                    <CardTitle>
+                      {activeTab === "alla"
+                        ? "Alla artiklar"
+                        : activeTab === "produkt"
+                          ? "Produkter"
+                          : activeTab === "tjänst"
+                            ? "Tjänster"
+                            : "Bundles"}
+                    </CardTitle>
+                    <CardDescription>
+                      {filteredArticles.length} {filteredArticles.length === 1 ? "artikel" : "artiklar"} hittades
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Namn</TableHead>
+                            <TableHead>Typ</TableHead>
+                            <TableHead>Enhet</TableHead>
+                            <TableHead>Inköpspris</TableHead>
+                            <TableHead>Försäljningspris</TableHead>
+                            <TableHead>Marginal</TableHead>
+                            <TableHead>Åtgärder</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredArticles.map((article) => {
+                            const margin = (
+                              ((article.salePrice - article.purchasePrice) / article.salePrice) *
+                              100
+                            ).toFixed(1)
+                            return (
+                              <TableRow key={article.id}>
+                                <TableCell className="font-medium">
+                                  <div className="flex items-center gap-2">
+                                    {getTypeIcon(article.type)}
+                                    {article.name}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={getTypeColor(article.type) as any}>{article.type}</Badge>
+                                </TableCell>
+                                <TableCell>{article.unit}</TableCell>
+                                <TableCell>{article.purchasePrice.toLocaleString("sv-SE")} kr</TableCell>
+                                <TableCell>{article.salePrice.toLocaleString("sv-SE")} kr</TableCell>
+                                <TableCell>
+                                  <span
+                                    className={`font-medium ${Number.parseFloat(margin) > 30 ? "text-green-600" : Number.parseFloat(margin) > 15 ? "text-yellow-600" : "text-red-600"}`}
+                                  >
+                                    {margin}%
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <Button variant="ghost" size="sm">
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="glass">
+                  <CardHeader className="text-center">
+                    <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Package className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <CardTitle>Inga artiklar hittades</CardTitle>
+                    <CardDescription>
+                      {searchTerm
+                        ? `Inga artiklar matchar "${searchTerm}"`
+                        : `Inga ${activeTab === "alla" ? "artiklar" : activeTab === "produkt" ? "produkter" : activeTab === "tjänst" ? "tjänster" : "bundles"} ännu`}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-center">
+                    <Button className="spotlight-gradient" onClick={() => setIsDialogOpen(true)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Lägg till första artikeln
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>
+        </motion.div>
+      </div>
+    </AppLayout>
+  )
 }
